@@ -143,8 +143,27 @@ average_array = np.mean(np.vstack(arrays), axis=0)
 
 print(average_array)
 
-# charge path
+# charge/discharge path
 
-# if possible charge maximum to start as late as possible and finish 2hrs before the avg plug out time for that "name"
+for row in df_schedule.iterrows():
+    driver = row[1]
+    driver_id = driver["driver_id"]
+    schedule = driver["schedule"]
+    plug_in_time = driver["plug_in_time"]
+    plug_out_time = driver["plug_out_time"]
+    time_difference = plug_out_time - plug_in_time
+    if time_difference < 0:
+        time_difference += 24
+    # get random plug-in soc
+    group = driver["group"]
+    target_soc = np.random.normal(df[df.Name == group]["Target SoC"], 0.1)
+    soc_requirement = np.random.normal(df[df.Name == group]["SoC requirement"], 0.1)
 
-# discharge path
+    # charge/discharge path
+    if plug_out_time < plug_in_time:
+        charge_path = np.zeros(24)
+        for i in range(24):
+            if schedule[i] == 1:
+                charge_path[i] = df[df.Name == group]["Plug-in SoC"]
+            else:
+                charge_path[i] = df[df.Name == group]["Target SoC"]
