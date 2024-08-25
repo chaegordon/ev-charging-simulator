@@ -116,6 +116,15 @@ def simulate_plugin(population_n, std_mins=60):
 
             # create 24 element array for each driver
             driver_schedule = np.zeros(24)
+
+            plug_in_freq = filtered_df["Plug-in frequency (per day)"]
+
+            if plug_in_freq.values[0] < 1:
+                # take a random sample from a uniform distribution
+                # if the sample is greater than the plug in frequency, skip the driver
+                if np.random.uniform(0, 1) > plug_in_freq.values[0]:
+                    continue
+
             # fill in the array with the plug in and out times
             for j in range(24):
                 if plug_out_time < plug_in_time:
@@ -158,6 +167,8 @@ def create_img(population_size, std_mins):
     avg_schedule = simulate_plugin(population_size, std_mins)
     # plot a bar chart from the average schedule
     plt.bar(range(24), avg_schedule)
+    plt.xlabel("Hour of the day")
+    plt.ylabel("Fraction of population plugged in")
     img_buf = io.BytesIO()
     plt.savefig(img_buf, format="png")
     plt.close()
