@@ -141,29 +141,68 @@ arrays = df_schedule["schedule"].values
 # Stack arrays vertically and compute the mean along axis 0
 average_array = np.mean(np.vstack(arrays), axis=0)
 
-print(average_array)
+# print(average_array)
 
 # charge/discharge path
 
-for row in df_schedule.iterrows():
-    driver = row[1]
-    driver_id = driver["driver_id"]
-    schedule = driver["schedule"]
-    plug_in_time = driver["plug_in_time"]
-    plug_out_time = driver["plug_out_time"]
-    time_difference = plug_out_time - plug_in_time
-    if time_difference < 0:
-        time_difference += 24
-    # get random plug-in soc
-    group = driver["group"]
-    target_soc = np.random.normal(df[df.Name == group]["Target SoC"], 0.1)
-    soc_requirement = np.random.normal(df[df.Name == group]["SoC requirement"], 0.1)
 
-    # charge/discharge path
+def create_new_array(
+    plug_in_time,
+    plug_out_time,
+    x,
+    mean_discharge,
+    max_drop=0.12,
+    mean_drop=0.06,
+    std_dev=0.03,
+):
     if plug_out_time < plug_in_time:
-        charge_path = np.zeros(24)
-        for i in range(24):
-            if schedule[i] == 1:
-                charge_path[i] = df[df.Name == group]["Plug-in SoC"]
-            else:
-                charge_path[i] = df[df.Name == group]["Target SoC"]
+        # get the end index of the recentred array
+        end_index = int(plug_out_time) + (24 - int(plug_in_time))
+    # Initialize an array of 24 zeros
+    array = [0] * 24
+
+    # Set the last 1 index to 0.8
+    array[end_index] = 0.8
+
+    # Initialize the value to be set
+    current_value = 0.8
+
+    # Set the values for the rest of the 1s from end_index-1 down to the first 1 index
+    for i in range(end_index - 1, -1, -1):
+        if current_value - max_drop > x:
+            # Generate a drop using normal distribution centered around mean_drop
+            drop = np.random.normal(mean_drop, std_dev)
+
+            # Ensure the drop does not exceed max_drop and does not make the value go below x
+            drop = min(drop, max_drop)
+            drop = max(drop, 0)  # ensure no negative drops
+
+            # Update current value and set in array
+            current_value -= drop
+            array[i] = current_value
+        else:
+            # If further drop would go below x, set the first 1 index to x
+            array[i] = x
+            current_value = array[i]
+
+    # create discharge cycle from end index to the end of the array
+    for i in range(end_index + 1, 24):
+        # Generate a drop using normal distribution centered around mean_drop
+        drop = np.random.normal(mean_discharge, std_dev) / (24 - end_index)
+
+        # Ensure the drop does not exceed max_drop and does not make the value go below x
+        drop = min(drop, max_drop)
+        drop = max(drop, 0)  # ensure no negative drops
+
+        # Update current value and set in array
+        current_value = array[i - 1] - drop
+        array[i] = current_value
+
+    # return the array to its original order
+    # NB: technically these two time chunks are in the same day so the 1-24 array is not time chronological in its current format
+    array = array[int(24 - plug_in_time) :] + array[: int(24 - plug_in_time)]
+    return array
+
+
+print(19, 7)
+print(create_new_array(19, 7, 0.6, 0.12))
