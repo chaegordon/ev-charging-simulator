@@ -13,6 +13,28 @@ import pandas as pd
 import numpy as np
 import uuid
 
+"""
+Script which simulates the charging behaviour of a population of EV drivers.
+
+The script reads in a csv file containing the following columns:
+- Name: The name of the driver group
+- Plug-in time: The time of day the driver plugs in
+- Plug-out time: The time of day the driver plugs out
+- Plug-in SoC: The state of charge the driver plugs in with
+- Target SoC: The state of charge the driver aims to reach
+- SoC requirement: The state of charge required to complete the journey
+- Miles/yr: The number of miles driven per year
+- Efficiency (mi/kWh): The efficiency of the vehicle in miles per kWh
+- Battery (kWh): The size of the battery in kWh
+- Charger kW: The power of the charger in kW
+- Plug-in frequency (per day): The frequency with which the driver plugs in per day
+- % of population: The percentage of the population that the driver group represents
+
+The script simulates the charging behaviour of a population of EV drivers by:
+- Drawing a random sample from a normal distribution with a standard deviation of 60 minutes to simulate the time at which each driver plugs in
+"""
+
+
 app = FastAPI()
 
 # Set up Jinja2 templates
@@ -378,6 +400,13 @@ def create_img(population_size, std_mins):
     )
     ax.set_xlabel("Hour of the day")
     ax.set_ylabel("SoC %, mean and 5-9th Percentile", color="blue")
+    # plot horizontal lines at avg plug in and out times
+    ax.axvline(
+        avg_plug_in_time, color="black", linestyle="--", label="Avg plug in time"
+    )
+    ax.axvline(
+        avg_plug_out_time, color="black", linestyle="--", label="Avg plug out time"
+    )
     ax2 = ax.twinx()
     # plot a bar chart from the average schedule on ax2
     ax2.bar(
