@@ -249,6 +249,7 @@ def simulate_charge_path(df_schedule):
             df[df.Name == group]["Miles/yr"].values[0]
             / 365
             / df[df.Name == group]["Efficiency (mi/kWh)"].values[0]
+            / df[df.Name == group]["Battery (kWh)"].values[0]
         )
         # max increase in SoC per Hour (is a drop because we build charge path back to front)
         # max_drop
@@ -354,11 +355,19 @@ def simulate_charge_path(df_schedule):
             chrono_array[int(24 - plug_in_time) :]
             + chrono_array[: int(24 - plug_in_time)]
         )
+        # Ensure all elements are floats
+        chrono_array = [
+            float(x) if isinstance(x, (int, float)) else float(x[0])
+            for x in chrono_array
+        ]
+
+        # Convert to np.array
+        chrono_array = np.array(chrono_array)
         # add chrono array to df_charge_path
         row = pd.DataFrame(
             {
                 "driver_id": [row[1]["driver_id"]],
-                "charge_path": [list(chrono_array)],
+                "charge_path": [chrono_array],
             }
         )
         df_charge_path = pd.concat([df_charge_path, row], ignore_index=True)
