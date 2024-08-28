@@ -297,7 +297,12 @@ def simulate_charge_path(df_schedule):
         # Combine them to create chrono_array
         chrono_array = first_part + second_part
 
-        # print(len(chrono_array))
+        # if first part is a 0 then add it to the end of the array
+        # NB: sort out the slice ...
+        if chrono_array[0] == 0:
+            chrono_array = chrono_array[1:] + [0]
+
+        print(chrono_array)
 
         if plug_out_index < plug_in_index:
             # get the end index of the recentred array
@@ -352,8 +357,8 @@ def simulate_charge_path(df_schedule):
 
         # return the array to its original order
         chrono_array = (
-            chrono_array[int(24 - plug_in_time) :]
-            + chrono_array[: int(24 - plug_in_time)]
+            chrono_array[int(24 - plug_in_index) :]
+            + chrono_array[: int(24 - plug_in_index)]
         )
         # Ensure all elements are floats
         chrono_array = [
