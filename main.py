@@ -220,17 +220,28 @@ def simulate_plugin(population_n, std_mins=60):
 
 def simulate_charge_path(df_schedule):
     df = pd.read_csv("data/EV_Driver_Archetypes.csv")
+    df_charge_path = pd.DataFrame(columns=["driver_id", "charge_path"])
 
     # for each group of drivers
     for row in df_schedule.iterrows():
         # std_dev=0.03,
         # get plug in and out times
         plug_in_time = row[1]["plug_in_time"]
+        plug_in_index = int(plug_in_time / 60)
+        if plug_in_index > 24:
+            plug_in_index = plug_in_index % 24
         plug_out_time = row[1]["plug_out_time"]
+        plug_out_index = int(plug_out_time / 60)
+        if plug_out_index > 24:
+            plug_out_index = plug_out_index % 24
         # get the group plug_in_soc
         group = row[1]["group"]
         plug_in_soc = df[df.Name == group]["Plug-in SoC"].values[0]
+        # convert to float from "{}%" string
+        plug_in_soc = float(plug_in_soc.strip("%")) / 100
         plug_out_soc = df[df.Name == group]["Target SoC"].values[0]
+        # convert to float from "{}%" string
+        plug_out_soc = float(plug_out_soc.strip("%")) / 100
         # randomize the plug in soc
         x = np.random.normal(plug_in_soc, 0.05)
         # get the mean discharge, get group miles per year
@@ -245,7 +256,10 @@ def simulate_charge_path(df_schedule):
             df[df.Name == group]["Charger kW"].values[0]
             / df[df.Name == group]["Battery (kWh)"].values[0]
         )
-        # mean drop
+        # max discharge per hour (70mph/efficiency)/battery size
+        max_discharge_per_hour = (
+            70 / df[df.Name == group]["Efficiency (mi/kWh)"].values[0]
+        ) / df[df.Name == group]["Battery (kWh)"].values[0]
         # charge duration
         charge_duration = plug_out_time - plug_in_time
         if charge_duration < 0:
@@ -263,27 +277,103 @@ def simulate_charge_path(df_schedule):
             (plug_out_soc - plug_in_soc / charge_duration),
         )
 
-        # row = pd.DataFrame(
-        #     {
-        #         "group": [group],
-        #         "driver_id": [str(i) + f"{uuid.uuid4()}"],
-        #         "schedule": [driver_schedule],
-        #         "plug_in_time": [plug_in_time],
-        #         "plug_out_time": [plug_out_time],
-        #     }
-        # )
+        std_dev = mean_drop / 3
 
-        # # Concatenate the new row to the existing df_schedule DataFrame
-        # df_schedule = pd.concat([df_schedule, row], ignore_index=True)
+        # rearrange the array to be in chronological order
+        # Rearrange the array to be in chronological order
+        schedule = row[1]["schedule"]
+        # ensure schedule is a list
+        schedule = list(schedule)
+        plug_in_index = int(plug_in_index)  # Ensure indices are integers
+        plug_out_index = int(plug_out_index)
 
-    # find the avg plug-in schedule
+        # Split the array
+        first_part = schedule[plug_in_index:]
+        # # 19:24
+        second_part = schedule[:plug_in_index]
+        # 0:19
 
-    # Extract the column containing arrays
-    arrays = df_schedule["schedule"].values
+        # Combine them to create chrono_array
+        chrono_array = first_part + second_part
 
-    # Stack arrays vertically and compute the mean along axis 0
+        # print(len(chrono_array))
+
+        if plug_out_index < plug_in_index:
+            # get the end index of the recentred array
+            end_index = int(plug_out_index) + (24 - int(plug_in_index))
+
+        else:
+            end_index = plug_out_index
+
+        # assert end index is modulo 24
+        if end_index > 24:
+            print("end index is greater than 24")
+            print(end_index)
+            print(plug_out_index)
+            print(plug_in_index)
+        end_index = end_index % 24
+
+        chrono_array[end_index] = 0.8
+
+        # Initialize the value to be set
+        current_value = 0.8
+
+        # Set the values for the rest of the 1s from end_index-1 down to the first 1 index
+        for i in range(end_index - 1, -1, -1):
+            if current_value - max_soc_increase_per_hour > x:
+                # Generate a drop using normal distribution centered around mean_drop
+                drop = np.random.normal(mean_drop, std_dev)
+
+                # Ensure the drop does not exceed max_drop and does not make the value go below x
+                drop = min(drop, max_soc_increase_per_hour)
+                drop = max(drop, 0)  # ensure no negative drops
+
+                # Update current value and set in chrono_array
+                current_value -= drop
+                chrono_array[i] = current_value
+            else:
+                # If further drop would go below x, set the first 1 index to x
+                chrono_array[i] = x
+                current_value = chrono_array[i]
+
+        # create discharge cycle from end index to the end of the chrono_array
+        for i in range(end_index + 1, 24):
+            # Generate a drop using normal distribution centered around mean_drop
+            drop = np.random.normal(mean_discharge_per_day, std_dev) / (24 - end_index)
+
+            # Ensure the drop does not exceed max_drop and does not make the value go below x
+            drop = min(drop, max_discharge_per_hour)
+            drop = max(drop, 0)  # ensure no negative drops
+
+            # Update current value and set in chrono_array
+            current_value = chrono_array[i - 1] - drop
+            chrono_array[i] = current_value
+
+        # return the array to its original order
+        chrono_array = (
+            chrono_array[int(24 - plug_in_time) :]
+            + chrono_array[: int(24 - plug_in_time)]
+        )
+        # add chrono array to df_charge_path
+        row = pd.DataFrame(
+            {
+                "driver_id": [row[1]["driver_id"]],
+                "charge_path": [list(chrono_array)],
+            }
+        )
+        df_charge_path = pd.concat([df_charge_path, row], ignore_index=True)
+
+    # save the charge path to a csv
+    df_charge_path.to_csv("data/charge_path.csv")
+
+    # averge the charge path
+    arrays = df_charge_path["charge_path"].values
     average_array = np.mean(np.vstack(arrays), axis=0)
-    return average_array
+    # get 95th percentile
+    percentile_95 = np.percentile(np.vstack(arrays), 95, axis=0)
+    # get 5th percentile
+    percentile_5 = np.percentile(np.vstack(arrays), 5, axis=0)
+    return average_array, percentile_95, percentile_5
 
 
 def create_img(population_size, std_mins):
@@ -291,10 +381,19 @@ def create_img(population_size, std_mins):
     plt.rcParams["figure.autolayout"] = True
     # get the average schedule
     avg_schedule, df_schedule = simulate_plugin(population_size, std_mins)
-    # plot a bar chart from the average schedule
-    plt.bar(range(24), avg_schedule)
-    plt.xlabel("Hour of the day")
-    plt.ylabel("Fraction of population plugged in")
+    # get the charge path
+    average_array, percentile_95, percentile_5 = simulate_charge_path(df_schedule)
+    print(average_array)
+    # plt these percentiles on another y axis
+    fig, ax = plt.subplots()
+    ax.plot(range(24), average_array, label="Average")
+    ax.fill_between(range(24), percentile_5, percentile_95, alpha=0.2)
+    ax.set_xlabel("Hour of the day")
+    ax.set_ylabel("SoC %")
+    ax2 = ax.twinx()
+    # plot a bar chart from the average schedule on ax2
+    ax2.bar(range(24), avg_schedule, alpha=0.2, color="red", label="Average")
+    ax2.set_ylabel("% of EVs plugged in")
     img_buf = io.BytesIO()
     plt.savefig(img_buf, format="png")
     plt.close()
