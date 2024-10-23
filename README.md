@@ -1,5 +1,10 @@
 # ev-charging-simulator
-Agent based model of EV charging behaviour simulating plugged in % and SoC % at different times of day.
+Agent based model of EV charging behaviour simulating plugged in % and SoC % at different times of day. Through this together for some fun, its by no means a "rigorous" simulation (current implimintations use of the std_mins in the index page is not rigorous). However the graphs look about right.
+
+TODO:
+1. Add agent based view.
+2. Update Index page so have rigorous inputs.
+3. Improve charging paths (i.e. more likely symmetric "there and back" events rather than uniform discharge).
 
 ## Usage - Poetry
 1. Clone the repository
